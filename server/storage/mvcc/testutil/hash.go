@@ -16,15 +16,10 @@ package testutil
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"go.etcd.io/bbolt"
-	"go.etcd.io/etcd/api/v3/mvccpb"
 )
 
 const (
@@ -109,14 +104,14 @@ func PickKey(i int64) string {
 	}
 }
 
-func CorruptBBolt(fpath string) error {
+/* func CorruptBBolt(fpath string) error {
 	db, derr := bbolt.Open(fpath, os.ModePerm, &bbolt.Options{})
 	if derr != nil {
 		return derr
 	}
 	defer db.Close()
 
-	return db.Update(func(tx *bbolt.Tx) error {
+	return db.Update(func(tx *bbolt.Txn) error {
 		b := tx.Bucket([]byte("key"))
 		if b == nil {
 			return errors.New("got nil bucket for 'key'")
@@ -145,4 +140,4 @@ func CorruptBBolt(fpath string) error {
 		}
 		return nil
 	})
-}
+} */

@@ -23,7 +23,7 @@ import (
 
 	"go.uber.org/zap"
 
-	bolt "go.etcd.io/bbolt"
+	bolt "github.com/dgraph-io/badger/v4"
 )
 
 type BucketID int
@@ -70,7 +70,7 @@ type UnsafeWriter interface {
 
 type batchTx struct {
 	sync.Mutex
-	tx      *bolt.Tx
+	tx      *bolt.Txn
 	backend *backend
 
 	pending int
@@ -112,25 +112,29 @@ func (t *batchTx) Unlock() {
 }
 
 func (t *batchTx) UnsafeCreateBucket(bucket Bucket) {
-	_, err := t.tx.CreateBucket(bucket.Name())
+	// mock
+	/* _, err := t.tx.CreateBucket(bucket.Name())
 	if err != nil && err != bolt.ErrBucketExists {
 		t.backend.lg.Fatal(
 			"failed to create a bucket",
 			zap.Stringer("bucket-name", bucket),
 			zap.Error(err),
 		)
-	}
+	} */
 	t.pending++
 }
 
 func (t *batchTx) UnsafeDeleteBucket(bucket Bucket) {
-	err := t.tx.DeleteBucket(bucket.Name())
-	if err != nil && err != bolt.ErrBucketNotFound {
-		t.backend.lg.Fatal(
-			"failed to delete a bucket",
-			zap.Stringer("bucket-name", bucket),
-			zap.Error(err),
-		)
+	iter := t.tx.NewKeyIterator(bucket.Name(), bolt.DefaultIteratorOptions)
+	defer iter.Close()
+	for iter.Seek(bucket.Name()); iter.ValidForPrefix(bucket.Name()); iter.Next() {
+		if err := t.tx.Delete(iter.Item().Key()); err != nil {
+			t.backend.lg.Fatal(
+				"failed to delete a bucket",
+				zap.Stringer("bucket-name", bucket),
+				zap.Error(err),
+			)
+		}
 	}
 	t.pending++
 }
@@ -145,21 +149,9 @@ func (t *batchTx) UnsafeSeqPut(bucket Bucket, key []byte, value []byte) {
 	t.unsafePut(bucket, key, value, true)
 }
 
-func (t *batchTx) unsafePut(bucketType Bucket, key []byte, value []byte, seq bool) {
-	bucket := t.tx.Bucket(bucketType.Name())
-	if bucket == nil {
-		t.backend.lg.Fatal(
-			"failed to find a bucket",
-			zap.Stringer("bucket-name", bucketType),
-			zap.Stack("stack"),
-		)
-	}
-	if seq {
-		// it is useful to increase fill percent when the workloads are mostly append-only.
-		// this can delay the page split and reduce space usage.
-		bucket.FillPercent = 0.9
-	}
-	if err := bucket.Put(key, value); err != nil {
+func (t *batchTx) unsafePut(bucketType Bucket, key []byte, value []byte, _ bool) {
+	key = append(bucketType.Name(), key...)
+	if err := t.tx.Set(key, value); err != nil {
 		t.backend.lg.Fatal(
 			"failed to write to a bucket",
 			zap.Stringer("bucket-name", bucketType),
@@ -171,32 +163,44 @@ func (t *batchTx) unsafePut(bucketType Bucket, key []byte, value []byte, seq boo
 
 // UnsafeRange must be called holding the lock on the tx.
 func (t *batchTx) UnsafeRange(bucketType Bucket, key, endKey []byte, limit int64) ([][]byte, [][]byte) {
-	bucket := t.tx.Bucket(bucketType.Name())
-	if bucket == nil {
-		t.backend.lg.Fatal(
-			"failed to find a bucket",
-			zap.Stringer("bucket-name", bucketType),
-			zap.Stack("stack"),
-		)
-	}
-	return unsafeRange(bucket.Cursor(), key, endKey, limit)
+	opts := bolt.DefaultIteratorOptions
+	opts.Prefix = bucketType.Name()
+	iter := t.tx.NewIterator(opts)
+	defer iter.Close()
+	return unsafeRange(iter, bucketType.Name(), key, endKey, limit)
 }
 
-func unsafeRange(c *bolt.Cursor, key, endKey []byte, limit int64) (keys [][]byte, vs [][]byte) {
+func unsafeRange(c *bolt.Iterator, prefix, key, endKey []byte, limit int64) (keys [][]byte, vs [][]byte) {
 	if limit <= 0 {
 		limit = math.MaxInt64
 	}
+
 	var isMatch func(b []byte) bool
 	if len(endKey) > 0 {
-		isMatch = func(b []byte) bool { return bytes.Compare(b, endKey) < 0 }
+		isMatch = func(b []byte) bool {
+			return bytes.Compare(b, endKey) < 0
+		}
 	} else {
 		isMatch = func(b []byte) bool { return bytes.Equal(b, key) }
 		limit = 1
 	}
 
-	for ck, cv := c.Seek(key); ck != nil && isMatch(ck); ck, cv = c.Next() {
-		vs = append(vs, cv)
+	firstKey := append(prefix, key...)
+	prefixLen := len(prefix)
+
+	for c.Seek(firstKey); c.ValidForPrefix(prefix); c.Next() {
+		item := c.Item()
+		item.Key()
+		ck := item.KeyCopy(nil)[prefixLen:]
+		if !isMatch(ck) {
+			continue
+		}
+		cv, err := item.ValueCopy(nil)
+		if err != nil {
+			break
+		}
 		keys = append(keys, ck)
+		vs = append(vs, cv)
 		if limit == int64(len(keys)) {
 			break
 		}
@@ -206,15 +210,8 @@ func unsafeRange(c *bolt.Cursor, key, endKey []byte, limit int64) (keys [][]byte
 
 // UnsafeDelete must be called holding the lock on the tx.
 func (t *batchTx) UnsafeDelete(bucketType Bucket, key []byte) {
-	bucket := t.tx.Bucket(bucketType.Name())
-	if bucket == nil {
-		t.backend.lg.Fatal(
-			"failed to find a bucket",
-			zap.Stringer("bucket-name", bucketType),
-			zap.Stack("stack"),
-		)
-	}
-	err := bucket.Delete(key)
+	key = append(bucketType.Name(), key...)
+	err := t.tx.Delete(key)
 	if err != nil {
 		t.backend.lg.Fatal(
 			"failed to delete a key",
@@ -230,9 +227,18 @@ func (t *batchTx) UnsafeForEach(bucket Bucket, visitor func(k, v []byte) error) 
 	return unsafeForEach(t.tx, bucket, visitor)
 }
 
-func unsafeForEach(tx *bolt.Tx, bucket Bucket, visitor func(k, v []byte) error) error {
-	if b := tx.Bucket(bucket.Name()); b != nil {
-		return b.ForEach(visitor)
+func unsafeForEach(tx *bolt.Txn, bucket Bucket, visitor func(k, v []byte) error) error {
+	opts := bolt.DefaultIteratorOptions
+	opts.Prefix = bucket.Name()
+	iter := tx.NewIterator(opts)
+	defer iter.Close()
+	prefixLen := len(bucket.Name())
+	for iter.Seek(bucket.Name()); iter.ValidForPrefix(bucket.Name()); iter.Next() {
+		item := iter.Item()
+		key := item.KeyCopy(nil)[prefixLen:]
+		item.Value(func(val []byte) error {
+			return visitor(key, val)
+		})
 	}
 	return nil
 }
@@ -270,9 +276,9 @@ func (t *batchTx) commit(stop bool) {
 		err := t.tx.Commit()
 		// gofail: var afterCommit struct{}
 
-		rebalanceSec.Observe(t.tx.Stats().RebalanceTime.Seconds())
+		/* rebalanceSec.Observe(t.tx.Stats().RebalanceTime.Seconds())
 		spillSec.Observe(t.tx.Stats().SpillTime.Seconds())
-		writeSec.Observe(t.tx.Stats().WriteTime.Seconds())
+		writeSec.Observe(t.tx.Stats().WriteTime.Seconds()) */
 		commitSec.Observe(time.Since(start).Seconds())
 		atomic.AddInt64(&t.backend.commits, 1)
 
@@ -346,11 +352,9 @@ func (t *batchTxBuffered) unsafeCommit(stop bool) {
 	if t.backend.readTx.tx != nil {
 		// wait all store read transactions using the current boltdb tx to finish,
 		// then close the boltdb tx
-		go func(tx *bolt.Tx, wg *sync.WaitGroup) {
+		go func(tx *bolt.Txn, wg *sync.WaitGroup) {
 			wg.Wait()
-			if err := tx.Rollback(); err != nil {
-				t.backend.lg.Fatal("failed to rollback tx", zap.Error(err))
-			}
+			tx.Discard()
 		}(t.backend.readTx.tx, t.backend.readTx.txWg)
 		t.backend.readTx.reset()
 	}

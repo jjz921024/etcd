@@ -21,7 +21,7 @@ import (
 
 	"go.uber.org/zap"
 
-	bolt "go.etcd.io/bbolt"
+	bolt "github.com/dgraph-io/badger/v4"
 	"go.etcd.io/etcd/api/v3/authpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/server/v3/lease/leasepb"
@@ -34,17 +34,18 @@ func snapDir(dataDir string) string {
 }
 
 func getBuckets(dbPath string) (buckets []string, err error) {
-	db, derr := bolt.Open(dbPath, 0600, &bolt.Options{Timeout: flockTimeout})
+	db, derr := bolt.Open(bolt.DefaultOptions(dbPath))
 	if derr != nil {
 		return nil, fmt.Errorf("failed to open bolt DB %v", derr)
 	}
 	defer db.Close()
 
-	err = db.View(func(tx *bolt.Tx) error {
-		return tx.ForEach(func(b []byte, _ *bolt.Bucket) error {
+	err = db.View(func(tx *bolt.Txn) error {
+		/*return tx.ForEach(func(b []byte, _ *bolt.Bucket) error {
 			buckets = append(buckets, string(b))
 			return nil
-		})
+		})*/
+		return nil
 	})
 	return buckets, err
 }
@@ -143,14 +144,14 @@ func metaDecoder(k, v []byte) {
 }
 
 func iterateBucket(dbPath, bucket string, limit uint64, decode bool) (err error) {
-	db, err := bolt.Open(dbPath, 0600, &bolt.Options{Timeout: flockTimeout})
+	db, err := bolt.Open(bolt.DefaultOptions(dbPath))
 	if err != nil {
 		return fmt.Errorf("failed to open bolt DB %v", err)
 	}
 	defer db.Close()
 
-	err = db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucket))
+	err = db.View(func(tx *bolt.Txn) error {
+		/*b := tx.Bucket([]byte(bucket))
 		if b == nil {
 			return fmt.Errorf("got nil bucket for %s", bucket)
 		}
@@ -171,7 +172,7 @@ func iterateBucket(dbPath, bucket string, limit uint64, decode bool) (err error)
 			if limit == 0 {
 				break
 			}
-		}
+		}*/
 
 		return nil
 	})

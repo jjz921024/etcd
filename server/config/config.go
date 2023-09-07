@@ -30,8 +30,6 @@ import (
 	"go.etcd.io/etcd/pkg/v3/netutil"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/v3discovery"
 	"go.etcd.io/etcd/server/v3/storage/datadir"
-
-	bolt "go.etcd.io/bbolt"
 )
 
 // ServerConfig holds the configuration of etcd as taken from the command line or discovery.
@@ -67,7 +65,7 @@ type ServerConfig struct {
 	BackendBatchLimit int
 
 	// BackendFreelistType is the type of the backend boltdb freelist.
-	BackendFreelistType bolt.FreelistType
+	//BackendFreelistType bolt.FreelistType
 
 	InitialPeerURLsMap  types.URLsMap
 	InitialClusterToken string

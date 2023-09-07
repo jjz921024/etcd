@@ -47,8 +47,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 	"sigs.k8s.io/yaml"
-
-	bolt "go.etcd.io/bbolt"
 )
 
 const (
@@ -1133,10 +1131,10 @@ func (cfg *Config) getMetricsURLs() (ss []string) {
 	return ss
 }
 
-func parseBackendFreelistType(freelistType string) bolt.FreelistType {
+/* func parseBackendFreelistType(freelistType string) bolt.FreelistType {
 	if freelistType == freelistArrayType {
 		return bolt.FreelistArrayType
 	}
 
 	return bolt.FreelistMapType
-}
+} */

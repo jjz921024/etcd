@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
+	bolt "github.com/dgraph-io/badger/v4"
 	"go.etcd.io/etcd/server/v3/storage/backend"
 	betesting "go.etcd.io/etcd/server/v3/storage/backend/testing"
 	"go.etcd.io/etcd/server/v3/storage/schema"
@@ -164,14 +164,10 @@ func TestBatchTxCommit(t *testing.T) {
 	tx.Commit()
 
 	// check whether put happens via db view
-	backend.DbFromBackendForTest(b).View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(schema.Test.Name())
-		if bucket == nil {
-			t.Errorf("bucket test does not exit")
-			return nil
-		}
-		v := bucket.Get([]byte("foo"))
-		if v == nil {
+	backend.DbFromBackendForTest(b).View(func(tx *bolt.Txn) error {
+		key := append(schema.Test.Name(), []byte("foo")...)
+		_, err := tx.Get(key)
+		if err != nil {
 			t.Errorf("foo key failed to written in backend")
 		}
 		return nil
@@ -192,14 +188,10 @@ func TestBatchTxBatchLimitCommit(t *testing.T) {
 
 	// batch limit commit should have been triggered
 	// check whether put happens via db view
-	backend.DbFromBackendForTest(b).View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(schema.Test.Name())
-		if bucket == nil {
-			t.Errorf("bucket test does not exit")
-			return nil
-		}
-		v := bucket.Get([]byte("foo"))
-		if v == nil {
+	backend.DbFromBackendForTest(b).View(func(tx *bolt.Txn) error {
+		key := append(schema.Test.Name(), []byte("foo")...)
+		_, err := tx.Get(key)
+		if err != nil {
 			t.Errorf("foo key failed to written in backend")
 		}
 		return nil

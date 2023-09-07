@@ -29,7 +29,6 @@ import (
 
 	"go.uber.org/zap/zaptest"
 
-	bolt "go.etcd.io/bbolt"
 	"go.etcd.io/etcd/server/v3/storage/datadir"
 	"go.etcd.io/etcd/server/v3/storage/schema"
 	"go.etcd.io/etcd/server/v3/storage/wal"
@@ -185,7 +184,7 @@ func TestBootstrapBackend(t *testing.T) {
 			cfg := config.ServerConfig{
 				Name:                "demoNode",
 				DataDir:             dataDir,
-				BackendFreelistType: bolt.FreelistArrayType,
+				//BackendFreelistType: bolt.FreelistArrayType,
 				Logger:              zaptest.NewLogger(t),
 			}
 

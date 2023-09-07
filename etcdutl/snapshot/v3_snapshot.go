@@ -19,16 +19,14 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"go.uber.org/zap"
 	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 
-	"go.uber.org/zap"
-
-	bolt "go.etcd.io/bbolt"
+	bolt "github.com/dgraph-io/badger/v4"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/client/pkg/v3/types"
@@ -116,7 +114,7 @@ func (s *v3Manager) Status(dbPath string) (ds Status, err error) {
 		return ds, err
 	}
 
-	db, err := bolt.Open(dbPath, 0400, &bolt.Options{ReadOnly: true})
+	db, err := bolt.Open(bolt.DefaultOptions(dbPath))
 	if err != nil {
 		return ds, err
 	}
@@ -124,9 +122,9 @@ func (s *v3Manager) Status(dbPath string) (ds Status, err error) {
 
 	h := crc32.New(crc32.MakeTable(crc32.Castagnoli))
 
-	if err = db.View(func(tx *bolt.Tx) error {
+	if err = db.View(func(tx *bolt.Txn) error {
 		// check snapshot file integrity first
-		var dbErrStrings []string
+		/*var dbErrStrings []string
 		for dbErr := range tx.Check() {
 			dbErrStrings = append(dbErrStrings, dbErr.Error())
 		}
@@ -164,7 +162,7 @@ func (s *v3Manager) Status(dbPath string) (ds Status, err error) {
 			}); err != nil {
 				return fmt.Errorf("cannot write bucket %s : %v", string(next), err)
 			}
-		}
+		}*/
 		return nil
 	}); err != nil {
 		return ds, err

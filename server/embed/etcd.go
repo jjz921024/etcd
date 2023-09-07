@@ -164,8 +164,6 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		return e, err
 	}
 
-	backendFreelistType := parseBackendFreelistType(cfg.BackendFreelistType)
-
 	srvcfg := config.ServerConfig{
 		Name:                                     cfg.Name,
 		ClientURLs:                               cfg.AdvertiseClientUrls,
@@ -191,7 +189,7 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		AutoCompactionMode:                       cfg.AutoCompactionMode,
 		QuotaBackendBytes:                        cfg.QuotaBackendBytes,
 		BackendBatchLimit:                        cfg.BackendBatchLimit,
-		BackendFreelistType:                      backendFreelistType,
+		//BackendFreelistType:                      backendFreelistType,
 		BackendBatchInterval:                     cfg.BackendBatchInterval,
 		MaxTxnOps:                                cfg.MaxTxnOps,
 		MaxRequestBytes:                          cfg.MaxRequestBytes,

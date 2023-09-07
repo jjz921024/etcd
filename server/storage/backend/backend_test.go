@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	bolt "go.etcd.io/bbolt"
+	bolt "github.com/dgraph-io/badger/v4"
 	"go.etcd.io/etcd/server/v3/storage/backend"
 	betesting "go.etcd.io/etcd/server/v3/storage/backend/testing"
 	"go.etcd.io/etcd/server/v3/storage/schema"
@@ -108,14 +108,10 @@ func TestBackendBatchIntervalCommit(t *testing.T) {
 	}
 
 	// check whether put happens via db view
-	assert.NoError(t, backend.DbFromBackendForTest(b).View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte("test"))
-		if bucket == nil {
-			t.Errorf("bucket test does not exit")
-			return nil
-		}
-		v := bucket.Get([]byte("foo"))
-		if v == nil {
+	assert.NoError(t, backend.DbFromBackendForTest(b).View(func(tx *bolt.Txn) error {
+		key := append(schema.Test.Name(), []byte("foo")...)
+		_, err := tx.Get(key)
+		if err != nil {
 			t.Errorf("foo key failed to written in backend")
 		}
 		return nil
@@ -126,11 +122,11 @@ func TestBackendDefrag(t *testing.T) {
 	bcfg := backend.DefaultBackendConfig(zaptest.NewLogger(t))
 	// Make sure we change BackendFreelistType
 	// The goal is to verify that we restore config option after defrag.
-	if bcfg.BackendFreelistType == bolt.FreelistMapType {
+	/* if bcfg.BackendFreelistType == bolt.FreelistMapType {
 		bcfg.BackendFreelistType = bolt.FreelistArrayType
 	} else {
 		bcfg.BackendFreelistType = bolt.FreelistMapType
-	}
+	} */
 
 	b, _ := betesting.NewTmpBackendFromCfg(t, bcfg)
 
@@ -179,10 +175,10 @@ func TestBackendDefrag(t *testing.T) {
 	if nsize >= size {
 		t.Errorf("new size = %v, want < %d", nsize, size)
 	}
-	db := backend.DbFromBackendForTest(b)
-	if db.FreelistType != bcfg.BackendFreelistType {
+	/*db := backend.DbFromBackendForTest(b)
+	 if db.FreelistType != bcfg.BackendFreelistType {
 		t.Errorf("db FreelistType = [%v], want [%v]", db.FreelistType, bcfg.BackendFreelistType)
-	}
+	} */
 
 	// try put more keys after shrink.
 	tx = b.BatchTx()

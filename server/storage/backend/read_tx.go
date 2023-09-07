@@ -18,7 +18,7 @@ import (
 	"math"
 	"sync"
 
-	bolt "go.etcd.io/bbolt"
+	bolt "github.com/dgraph-io/badger/v4"
 )
 
 // IsSafeRangeBucket is a hack to avoid inadvertently reading duplicate keys;
@@ -44,9 +44,9 @@ type baseReadTx struct {
 
 	// TODO: group and encapsulate {txMu, tx, buckets, txWg}, as they share the same lifecycle.
 	// txMu protects accesses to buckets and tx on Range requests.
-	txMu    *sync.RWMutex
-	tx      *bolt.Tx
-	buckets map[BucketID]*bolt.Bucket
+	txMu *sync.RWMutex
+	tx   *bolt.Txn
+	//buckets map[BucketID]*bolt.Bucket
 	// txWg protects tx from being rolled back at the end of a batch interval until all reads using this tx are done.
 	txWg *sync.WaitGroup
 }
@@ -92,7 +92,7 @@ func (baseReadTx *baseReadTx) UnsafeRange(bucketType Bucket, key, endKey []byte,
 	}
 
 	// find/cache bucket
-	bn := bucketType.ID()
+	/*bn := bucketType.ID()
 	baseReadTx.txMu.RLock()
 	bucket, ok := baseReadTx.buckets[bn]
 	baseReadTx.txMu.RUnlock()
@@ -115,9 +115,14 @@ func (baseReadTx *baseReadTx) UnsafeRange(bucketType Bucket, key, endKey []byte,
 		baseReadTx.txMu.Lock()
 	}
 	c := bucket.Cursor()
-	baseReadTx.txMu.Unlock()
+	baseReadTx.txMu.Unlock()*/
 
-	k2, v2 := unsafeRange(c, key, endKey, limit-int64(len(keys)))
+	opts := bolt.DefaultIteratorOptions
+	opts.Prefix = bucketType.Name()
+	c := baseReadTx.tx.NewIterator(opts)
+	defer c.Close()
+
+	k2, v2 := unsafeRange(c, bucketType.Name(), key, endKey, limit-int64(len(keys)))
 	return append(k2, keys...), append(v2, vals...)
 }
 
@@ -132,7 +137,7 @@ func (rt *readTx) RUnlock() { rt.mu.RUnlock() }
 
 func (rt *readTx) reset() {
 	rt.buf.reset()
-	rt.buckets = make(map[BucketID]*bolt.Bucket)
+	//rt.buckets = make(map[BucketID]*bolt.Bucket)
 	rt.tx = nil
 	rt.txWg = new(sync.WaitGroup)
 }

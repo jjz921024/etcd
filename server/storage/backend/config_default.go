@@ -16,7 +16,7 @@
 
 package backend
 
-import bolt "go.etcd.io/bbolt"
+import bolt "github.com/dgraph-io/badger/v4"
 
 var boltOpenOptions *bolt.Options
 

@@ -39,7 +39,7 @@ import (
 	"go.etcd.io/etcd/server/v3/verify"
 	"go.etcd.io/raft/v3/raftpb"
 
-	bolt "go.etcd.io/bbolt"
+	bolt "github.com/dgraph-io/badger/v4"
 )
 
 var (
@@ -259,7 +259,7 @@ func saveDB(lg *zap.Logger, destDB, srcDB string, idx uint64, term uint64, desir
 	var src *bolt.DB
 	ch := make(chan *bolt.DB, 1)
 	go func() {
-		db, err := bolt.Open(srcDB, 0444, &bolt.Options{ReadOnly: true})
+		db, err := bolt.Open(bolt.DefaultOptions(srcDB))
 		if err != nil {
 			lg.Fatal("bolt.Open FAILED", zap.Error(err))
 		}
@@ -272,23 +272,19 @@ func saveDB(lg *zap.Logger, destDB, srcDB string, idx uint64, term uint64, desir
 	}
 	defer src.Close()
 
-	tx, err := src.Begin(false)
-	if err != nil {
-		lg.Fatal("bbolt.BeginTx failed", zap.Error(err))
-	}
+	tx := src.NewTransaction(false)
 
 	// copy srcDB to destDB
 	dest, err := os.Create(destDB)
 	if err != nil {
 		lg.Fatal("creation of destination file failed", zap.String("dest", destDB), zap.Error(err))
 	}
-	if _, err := tx.WriteTo(dest); err != nil {
+	// TODO:
+	/*if _, err := tx.WriteTo(dest); err != nil {
 		lg.Fatal("bbolt write to destination file failed", zap.String("dest", destDB), zap.Error(err))
-	}
+	}*/
 	dest.Close()
-	if err := tx.Rollback(); err != nil {
-		lg.Fatal("bbolt tx.Rollback failed", zap.String("dest", destDB), zap.Error(err))
-	}
+	tx.Discard()
 
 	// trim membership info
 	be := backend.NewDefaultBackend(lg, destDB)

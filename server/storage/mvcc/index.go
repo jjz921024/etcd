@@ -51,6 +51,16 @@ func newTreeIndex(lg *zap.Logger) index {
 	}
 }
 
+
+func NewTreeIndex(lg *zap.Logger) index {
+	return &treeIndex{
+		tree: btree.NewG(32, func(aki *keyIndex, bki *keyIndex) bool {
+			return aki.Less(bki)
+		}),
+		lg: lg,
+	}
+}
+
 func (ti *treeIndex) Put(key []byte, rev revision) {
 	keyi := &keyIndex{key: key}
 
